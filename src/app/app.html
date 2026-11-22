@@ -1,0 +1,23 @@
+<main class="erp">
+  <header>
+    <h1>ERP GTS — test</h1>
+    <p>Application de démonstration déployée par Lynx Chain Guard (version {{ version }}).</p>
+  </header>
+  <section aria-label="Indicateurs">
+    @for (k of kpis; track k.label) {
+      <article class="kpi"><span>{{ k.label }}</span><strong>{{ k.value }}</strong></article>
+    }
+  </section>
+  <section>
+    <h2>Dernières factures</h2>
+    <table>
+      <thead><tr><th>N°</th><th>Client</th><th>Montant</th><th>Statut</th></tr></thead>
+      <tbody>
+        @for (f of invoices; track f.id) {
+          <tr><td>{{ f.id }}</td><td>{{ f.client }}</td><td>{{ f.amount }} €</td><td>{{ f.status }}</td></tr>
+        }
+      </tbody>
+    </table>
+  </section>
+</main>
+<router-outlet />

@@ -1,0 +1,4 @@
+# Contexte de build minimal : seul le site construit (dist/erp-gts-test/browser) et nginx.conf entrent dans l'image.
+*
+!nginx.conf
+!dist/erp-gts-test/browser/**

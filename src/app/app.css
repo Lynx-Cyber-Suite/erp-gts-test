@@ -1,0 +1,6 @@
+.erp { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+section[aria-label] { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.kpi { border: 1px solid #ececf1; border-radius: 14px; padding: 1rem; display: flex; flex-direction: column; }
+.kpi strong { font-size: 1.6rem; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #ececf1; }

@@ -1,0 +1,6 @@
+# Images DURCIES Lynx utilisées par erp-gts-test (registre Lynx Chain Guard, espace lynx/), épinglées par digest.
+# Relevées le 2026-11-22 par « lynx-chain verify <image> --json » (signature Lynx valide, SBOM et rapport de scan attachés).
+# Mettre à jour = relancer lynx-chain verify sur l'étiquette, vérifier, puis remplacer le digest ici, dans le Dockerfile et .lynx/*.yaml.
+node=registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82
+nginx=registry-stg.lynx-cyber.com/lynx/nginx@sha256:8271f0afe6319d1995c483c0acfed677c8a37af0beeedebb61b5b257df370e30
+alpine-base=registry-stg.lynx-cyber.com/lynx/alpine-base@sha256:731f4b392c9c12150002e3dc1f62b22c122b5ba4e0fad806922d694f83a4a113

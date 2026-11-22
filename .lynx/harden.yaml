@@ -1,0 +1,34 @@
+# Durcissement as code de l'image erp-gts-test (tenant gts) — exécuté par la CLI Lynx :
+#   lynx-chain harden push -f .lynx/harden.yaml --dry-run   # Dockerfile durci généré + commandes, rien n'est exécuté
+#   LYNX_REGISTRY_TOKEN=cgr_… (PUSH gts/erp-gts-test) LYNX_CHAINGUARD_TOKEN=cg_… lynx-chain harden push -f .lynx/harden.yaml
+# ⇒ build buildx depuis le Dockerfile (dernière étape durcie : setuid/setgid retirés, gestionnaire de paquets retiré, non root),
+#   push dans registry-stg.lynx-cyber.com/gts/erp-gts-test, signature PAR L'API avec la clé de l'organisation gts (jamais
+#   exposée) et attestation du SBOM. Aucun outil d'Internet : pas de Trivy local (scan.enabled: false) — le scan est fait
+#   CÔTÉ Lynx Chain Guard (politique de push erp-gts-test-push « scan au push », lynx-chain ai-scan image, passeport).
+#   updatePackages: false — aucun « apk upgrade » (il irait chercher des paquets sur Internet) : la base lynx/nginx est déjà
+#   corrigée et reconstruite chaque nuit par Lynx.
+apiVersion: chainguard.lynx-cyber.com/v1
+kind: HardenedImageBuild
+metadata:
+  name: erp-gts-test
+  description: ERP GTS — test (Angular 21 servi par nginx durci, non root, port 8080)
+spec:
+  type: image
+  registry: registry-stg.lynx-cyber.com
+  image:
+    dockerfile: ../Dockerfile         # chemins relatifs à ce fichier
+    context: ..
+    repository: erp-gts-test          # préfixé par le tenant du jeton ⇒ gts/erp-gts-test
+    tags: ["1.0.0"]
+    platforms: [linux/arm64]          # VPS Graviton (arm64)
+    hardening:
+      updatePackages: false
+      nonRoot: true
+      removeSetuid: true
+      removePackageManagers: true
+  scan:
+    enabled: false
+  sign:
+    enabled: true
+    key: org                           # signature par l'API Lynx Chain Guard, clé ACTIVE de l'organisation gts
+    attestSbom: true

@@ -1,0 +1,58 @@
+# CI de erp-gts-test (tenant gts) — lynx-pipeline.yaml (DSL Lynx Chain Guard, version 1), enregistré dans Lynx Chain Guard
+# (pipeline « erp-gts-test-ci ») et exécuté par le runner auto-hébergé du VPS (label prod, réservé à la production).
+# Règles : AUCUN outil d'Internet non durci — secrets / SAST / SCA = moteurs Lynx Chain Guard (gabarits lynx/ai-*, analyse
+# déterministe côté plateforme, IA facultative), SBOM = lynx-chain sbom, passeports de paquets = lynx/verify-packages (ENFORCE) ;
+# chaque step « run: » tourne dans l'image DURCIE lynx/node épinglée par digest (.lynx/images.lock) ; npm passe UNIQUEMENT
+# par le proxy de confiance npm-gts-proxy (.npmrc, jeton cgr_ de lecture fourni par le runner en secret LYNX_REGISTRY_TOKEN).
+version: 1
+name: erp-gts-test-ci
+description: "CI erp-gts-test : secrets, SAST, SBOM, SCA, passeports de paquets, tests, build Angular, security gate"
+runs-on: self-hosted:prod
+on:
+  push: { branches: [main] }
+  manual: {}
+env: { NG_CLI_ANALYTICS: "false", NPM_CONFIG_UPDATE_NOTIFIER: "false" }
+secrets: [LYNX_REGISTRY_TOKEN]
+gate: { mode: ENFORCE, critical: 0, high: 0 }
+stages:
+  - name: source
+    steps:
+      - { id: checkout, name: "Récupération du code (dépôt privé, jeton de lecture)", uses: checkout }
+      - { id: secrets, name: "Secrets (moteur Lynx)", uses: lynx/ai-secrets, needs: [checkout] }
+  - name: analyse
+    steps:
+      - { id: sast, name: "SAST (moteur Lynx)", uses: lynx/ai-sast, needs: [checkout] }
+      - { id: sbom, name: "SBOM CycloneDX (lynx-chain sbom)", uses: lynx/sbom, needs: [checkout], artifacts: [{ path: sbom.cdx.json, type: SBOM }] }
+      - { id: sca, name: "SCA (moteur Lynx, OSV / KEV / EPSS)", uses: lynx/ai-sca, needs: [sbom] }
+      - id: lockfile
+        name: "Lockfile dérivé pour la vérification des passeports (contournement CLI 0.6.4)"
+        image: "registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82"
+        run: node .lynx/lockfile-for-verify.mjs
+        needs: [checkout]
+      - id: verify-packages
+        name: "Passeports de paquets (chaque entrée du lockfile)"
+        uses: lynx/verify-packages
+        with: { lockfile: lynx-verify/package-lock.json, mode: ENFORCE }
+        needs: [lockfile]
+        artifacts: [{ path: lynx-verify-packages.json, type: REPORT }]
+  - name: build
+    steps:
+      - id: install
+        name: "npm ci via le proxy Lynx (pare-feu de paquets)"
+        image: "registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82"
+        run: npm ci --include=dev --legacy-peer-deps --no-audit --no-fund --ignore-scripts
+        needs: [verify-packages]
+      - id: unit
+        name: "Tests unitaires (Vitest)"
+        image: "registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82"
+        run: npx ng test --watch=false
+        needs: [install]
+      - id: build
+        name: "Build Angular (production)"
+        image: "registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82"
+        run: npx ng build --configuration production && tar -czf erp-gts-test-browser.tgz -C dist/erp-gts-test browser
+        needs: [unit]
+        artifacts: [{ path: erp-gts-test-browser.tgz, type: PACKAGE }]
+  - name: verify
+    steps:
+      - { id: gate, name: "Security gate (ENFORCE)", uses: lynx/gate, with: { environment: PRODUCTION }, needs: [secrets, sast, sbom, sca, verify-packages, build] }

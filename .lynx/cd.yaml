@@ -1,0 +1,70 @@
+# CD de erp-gts-test (tenant gts) — pipeline « erp-gts-test-cd » (environnement PRODUCTION), runner du VPS (label prod).
+# Construit le site dans l'image durcie lynx/node (npm via le proxy Lynx), construit l'image durcie à partir de lynx/nginx
+# (par digest), la scanne côté Lynx Chain Guard, la pousse dans gts/erp-gts-test, la signe avec la clé de l'organisation
+# (attestations SBOM + scan), applique la security gate PRODUCTION puis vérifie la release candidate PROD avant déploiement.
+# ⚠ Les steps « image » et « push » exigent « docker buildx » sur le runner : ce plugin n'est PAS installé sur le VPS (il
+#   viendrait d'Internet, non durci, refusé) ⇒ ils sont désactivés (enabled: false) et l'image est construite par
+#   l'opérateur avec la même définition (voir docs/deploiement, étape 7). Le démarrage du conteneur est fait par
+#   (script de déploiement de l'exploitation, hors de ce dépôt) : les steps du runner n'ont volontairement pas accès au socket Docker de l'hôte.
+version: 1
+name: erp-gts-test-cd
+description: "CD erp-gts-test : build durci, image, scan, push, signature, attestations, passeport, gate, release PROD"
+runs-on: self-hosted:prod
+on:
+  manual:
+    params: [{ name: tag, default: "1.0.0", required: true }]
+env: { NG_CLI_ANALYTICS: "false" }
+secrets: [LYNX_REGISTRY_TOKEN]
+gate: { mode: ENFORCE, critical: 0, high: 0 }
+stages:
+  - name: source
+    steps:
+      - { id: checkout, name: "Récupération du code", uses: checkout }
+      - { id: sbom, name: "SBOM CycloneDX", uses: lynx/sbom, needs: [checkout], artifacts: [{ path: sbom.cdx.json, type: SBOM }] }
+      - id: lockfile
+        name: "Lockfile dérivé pour la vérification des passeports (contournement CLI 0.6.4)"
+        image: "registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82"
+        run: node .lynx/lockfile-for-verify.mjs
+        needs: [checkout]
+      - { id: verify-packages, name: "Passeports de paquets (ENFORCE)", uses: lynx/verify-packages, with: { lockfile: lynx-verify/package-lock.json, mode: ENFORCE }, needs: [lockfile] }
+  - name: build
+    steps:
+      - id: site
+        name: "Build Angular dans lynx/node (proxy npm Lynx)"
+        image: "registry-stg.lynx-cyber.com/lynx/node@sha256:df6c134c4af2f3a3f5c4461e5035bb7b47b9d27ac24e4141488f045c854e3c82"
+        run: npm ci --include=dev --legacy-peer-deps --no-audit --no-fund --ignore-scripts && npx ng build --configuration production
+        needs: [verify-packages]
+      - id: image
+        name: "Image durcie (base lynx/nginx par digest)"
+        uses: lynx/build-image
+        enabled: false
+        with: { image: erp-gts-test, dockerfile: Dockerfile, context: ., platforms: [linux/arm64], tags: ["1.0.0"] }
+        needs: [site]
+      - id: push
+        name: "Push dans le registre Lynx (gts/erp-gts-test)"
+        uses: lynx/publish
+        enabled: false
+        with: { image: erp-gts-test, tags: ["1.0.0"], sign: org }
+        needs: [image]
+  - name: release
+    steps:
+      - id: image-scan
+        name: "Scan de l'image par Lynx Chain Guard (CVE, CIS, STIG)"
+        uses: lynx/ai-image
+        with: { image: "registry-stg.lynx-cyber.com/gts/erp-gts-test:1.0.0", platform: linux/arm64, fail-on: HIGH, ai: false }
+        needs: [site]
+      - id: sign
+        name: "Signature (clé de l'organisation) + attestations SBOM et scan"
+        uses: lynx/sign
+        with: { image: "registry-stg.lynx-cyber.com/gts/erp-gts-test:1.0.0", attest: [sbom, scan] }
+        needs: [image-scan]
+      - { id: gate, name: "Security gate PRODUCTION (ENFORCE)", uses: lynx/gate, with: { environment: PRODUCTION, phase: pre-deploy }, needs: [sbom, verify-packages, image-scan, sign] }
+  - name: deploy
+    steps:
+      - id: release-check
+        name: "Release candidate PROD approuvée (2 signataires) ?"
+        image: "registry-stg.lynx-cyber.com/lynx/alpine-base@sha256:731f4b392c9c12150002e3dc1f62b22c122b5ba4e0fad806922d694f83a4a113"
+        run: |
+          echo "Déploiement autorisé seulement si la release PROD du digest est approuvée : contrôle refait par le script de déploiement de l'exploitation"
+          echo "(lynx-chain verify --key org puis --release PROD, conteneur non root en lecture seule sur le VPS)."
+        needs: [gate]
