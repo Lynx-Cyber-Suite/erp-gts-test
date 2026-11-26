@@ -6,6 +6,10 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- Lynx Observe — Lynx Track : chargement des pages, appels HTTP, erreurs, Web Vitals (SDK navigateur, sans dépendance npm) -->
+  <script src="observe-config.js"></script>
+  <script src="https://soc-stg.lynx-cyber.com/downloads/sdk/lynx-observe-browser.min.js" defer
+          onload="window.__lynxObserve && window.__lynxObserve.token && LynxObserve.init(window.__lynxObserve)"></script>
 </head>
 <body>
   <app-root></app-root>
